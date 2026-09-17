@@ -3,6 +3,7 @@ package majster2nn.dev;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.ScreenAdapter;
+import com.badlogic.gdx.assets.AssetManager;
 import com.badlogic.gdx.audio.Sound;
 import com.badlogic.gdx.graphics.Camera;
 import com.badlogic.gdx.graphics.Color;
@@ -32,6 +33,8 @@ import java.util.Comparator;
 import static majster2nn.dev.Constants.DIRT_LAYERS;
 
 public class GameScreen extends ScreenAdapter {
+    public AssetManager assetManager = new AssetManager();
+
     Sound sound = Gdx.audio.newSound(Gdx.files.internal("soundtrack.mp3"));
 
     TextureAtlas atlas = new TextureAtlas(Gdx.files.internal("ui/uiskin.atlas"));
@@ -39,7 +42,6 @@ public class GameScreen extends ScreenAdapter {
     GlyphLayout layout = new GlyphLayout();
 
     NinePatch patch = new NinePatch(new Texture(Gdx.files.internal("ui/frame.png")), 5, 5, 5, 5);
-
 
     Sprite runner = new Sprite(new Texture(Gdx.files.internal("game/runner.png")));
     Sprite dirt = new Sprite(new Texture(Gdx.files.internal("game/dirt.png")));
@@ -265,5 +267,6 @@ public class GameScreen extends ScreenAdapter {
     public void dispose() {
         atlas.dispose();
         batch.dispose();
+        assetManager.dispose();
     }
 }
