@@ -21,7 +21,7 @@ public class RenderSystem extends AbstractSystem {
 
     @Override
     public void update(float delta) {
-        managedEntities.values().forEach(entity -> {IO.println("Rendered: " + entity.getComponent(NameComponent.class).getValue());});
+//        managedEntities.values().forEach(entity -> {IO.println("Rendered: " + entity.getComponent(NameComponent.class).getValue());});
     }
 
     public Collection<Entity> getEntities() {

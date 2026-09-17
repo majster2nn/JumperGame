@@ -12,18 +12,22 @@ import com.badlogic.gdx.graphics.g2d.*;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
+import com.badlogic.gdx.math.Vector3;
+import com.badlogic.gdx.scenes.scene2d.ui.TextButton.TextButtonStyle;
 
+import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
 import com.badlogic.gdx.utils.ScreenUtils;
 import com.badlogic.gdx.utils.viewport.ExtendViewport;
 import com.badlogic.gdx.utils.viewport.ScreenViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
 import majster2nn.dev.ecs.Entity;
 import majster2nn.dev.ecs.components.*;
+import majster2nn.dev.ecs.components.render.InvertedComponent;
+import majster2nn.dev.ecs.components.render.RotationComponent;
+import majster2nn.dev.ecs.components.render.ScaleComponent;
 import majster2nn.dev.ecs.systems.*;
 
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
+import java.util.Comparator;
 
 import static majster2nn.dev.Constants.DIRT_LAYERS;
 
@@ -34,13 +38,15 @@ public class GameScreen extends ScreenAdapter {
     BitmapFont font = new BitmapFont(Gdx.files.internal("ui/font.fnt"), atlas.findRegion("font"), false);
     GlyphLayout layout = new GlyphLayout();
 
-    Sprite square = atlas.createSprite("square");
+    NinePatch patch = new NinePatch(new Texture(Gdx.files.internal("ui/frame.png")), 5, 5, 5, 5);
+
 
     Sprite runner = new Sprite(new Texture(Gdx.files.internal("game/runner.png")));
-    Sprite runner2 = new Sprite(new Texture(Gdx.files.internal("game/runner.png")));
     Sprite dirt = new Sprite(new Texture(Gdx.files.internal("game/dirt.png")));
     Sprite grass = new Sprite(new Texture(Gdx.files.internal("game/grass.png")));
+    Sprite sky = new Sprite(new Texture(Gdx.files.internal("game/background.png")));
 
+    Sprite cloud = new Sprite(new Texture(Gdx.files.internal("game/cloud.png")));
     Sprite coin = new Sprite(new Texture(Gdx.files.internal("game/coin.png")));
 
     SpriteBatch batch;
@@ -60,6 +66,9 @@ public class GameScreen extends ScreenAdapter {
     float coinSpawnTimer = 0;
     float nextSpawnDelay = MathUtils.random(1f, 3f);
 
+    float cloudSpawnTimer = 0;
+    float nextCloudDelay = MathUtils.random(1f, 3f);
+
     EntityManager entityManager = new EntityManager();
 
     public static Entity player;
@@ -74,14 +83,14 @@ public class GameScreen extends ScreenAdapter {
 
         batch = new SpriteBatch();
 
+        font.getRegion().getTexture().setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
+
         runner.setSize(1, 2);
         dirt.setSize(1, 1);
         grass.setSize(1, 1);
 
+        cloud.setSize(1, 1);
         coin.setSize(1, 1);
-
-        square.setScale(15);
-        square.setOrigin(0, 0);
 
         sound.play(1f);
         sound.loop();
@@ -93,7 +102,7 @@ public class GameScreen extends ScreenAdapter {
         entityManager.registerNewManager(new CollectibleSystem());
 
         player = new Entity(entityManager, "player");
-        player.addComponent(new PositionComponent(new Vector2(2, DIRT_LAYERS)))
+        player.addComponent(new PositionComponent(new Vector3(2, DIRT_LAYERS, 2)))
             .addComponent(new GravityComponent(true))
             .addComponent(new GroundedComponent(true))
             .addComponent(new SpriteComponent(runner))
@@ -101,6 +110,8 @@ public class GameScreen extends ScreenAdapter {
             .addComponent(new PlayerComponent(true))
             .addComponent(new CollisionComponent(new Rectangle(0, 0, 1, 2)));
 
+        guiViewport = new ScreenViewport(guiCamera);
+        ((ScreenViewport) guiViewport).setUnitsPerPixel(1f / 3f);
     }
 
     @Override
@@ -109,6 +120,7 @@ public class GameScreen extends ScreenAdapter {
 
         gameViewport.apply();
 
+        updateCloudSpawning(delta);
         updateCoinSpawning(delta);
 
         positionX = (positionX + SCROLL_SPEED * delta) % REPEAT_PATTERN;
@@ -142,10 +154,39 @@ public class GameScreen extends ScreenAdapter {
             }
         }
 
-        entityManager.getSystem(RenderSystem.class).getEntities().forEach(entity -> {
+        for (int i = 0; i < tilesNeeded + TILE_BUFFERED; i++) {
+            for (int j = DIRT_LAYERS; j < gameViewport.getWorldHeight(); j++) {
+                int tileX = firstTile + i;
+                sky.setPosition(tileX - positionX, j);
+                sky.draw(batch);
+            }
+        }
+
+        entityManager.getSystem(RenderSystem.class).getEntities().stream().sorted(Comparator.comparing(
+            en -> en.getComponent(PositionComponent.class).getValue().z
+        )).forEach(entity -> {
             Sprite sprite = entity.getComponent(SpriteComponent.class).getValue();
-            Vector2 pos = entity.getComponent(PositionComponent.class).getValue();
+            sprite.setOrigin(sprite.getWidth() / 2f, sprite.getHeight() / 2f);
+
+            sprite.setFlip(false, false);
+
+            Vector3 pos = entity.getComponent(PositionComponent.class).getValue();
             sprite.setPosition(pos.x, pos.y);
+
+            if (entity.has(InvertedComponent.class) && entity.getComponent(InvertedComponent.class).getValue()){
+               sprite.flip(true, false);
+            }
+
+            if (entity.has(ScaleComponent.class)) {
+                float scale = entity.getComponent(ScaleComponent.class).getValue();
+                sprite.setScale(scale);
+            }
+
+            if (entity.has(RotationComponent.class)) {
+                float rotation = entity.getComponent(RotationComponent.class).getValue();
+                sprite.setRotation(rotation);
+            }
+
             sprite.draw(batch);
         });
     }
@@ -154,23 +195,45 @@ public class GameScreen extends ScreenAdapter {
         guiViewport.apply();
         batch.setProjectionMatrix(guiCamera.combined);
 
-        float squareX = guiViewport.getWorldWidth() - square.getWidth() * square.getScaleX();
-        float squareY = guiViewport.getWorldHeight() - square.getHeight() * square.getScaleY();
-        float squareW = square.getWidth() * square.getScaleX();
-        float squareH = square.getHeight() * square.getScaleY();
+        float squareW = 40 ;
+        float squareH = 40;
+        float squareX = guiViewport.getWorldWidth() - squareW;
+        float squareY = guiViewport.getWorldHeight() - squareH;
 
-        square.setColor(Color.WHITE);
-        square.setPosition(squareX, squareY);
-        square.draw(batch);
+        patch.draw(batch, squareX, squareY, squareW, squareH);
 
         layout.setText(font, "" + pickedCoins);
 
         float textX = squareX + (squareW - layout.width) / 2f;
         float textY = squareY + (squareH + layout.height) / 2f;
 
-        font.getData().setScale(2f);
         font.setColor(Color.BLACK);
         font.draw(batch, layout, textX, textY);
+    }
+
+    private void updateCloudSpawning(float delta) {
+        cloudSpawnTimer += delta;
+
+        if(cloudSpawnTimer >= nextCloudDelay) {
+            cloudSpawnTimer = 0;
+            nextCloudDelay = MathUtils.random(1f, 3f);
+
+            float spawnX = gameViewport.getWorldWidth() + 2;
+
+            float spawnY = MathUtils.random((int)(DIRT_LAYERS + 1), (int)(gameViewport.getWorldHeight() - 1));
+
+            float cloudScale = MathUtils.random(.7f, 1.3f);
+            float cloudRotation = MathUtils.random(0f, 45f);
+            boolean inverted = MathUtils.randomBoolean();
+
+            Entity cloudEntity = new Entity(entityManager, "cloud");
+            cloudEntity.addComponent(new PositionComponent(new Vector3(spawnX, spawnY, 1)))
+                .addComponent(new SpriteComponent(cloud))
+                .addComponent(new VelocityComponent(new  Vector2(-1f, 0f)))
+                .addComponent(new RotationComponent(cloudRotation))
+                .addComponent(new ScaleComponent(cloudScale))
+                .addComponent(new InvertedComponent(inverted));
+        }
     }
 
     private void updateCoinSpawning(float delta) {
@@ -183,7 +246,7 @@ public class GameScreen extends ScreenAdapter {
             float spawnY = DIRT_LAYERS + 4;
 
             Entity coinEntity = new Entity(entityManager, "coin");
-            coinEntity.addComponent(new PositionComponent(new Vector2(spawnX, spawnY)))
+            coinEntity.addComponent(new PositionComponent(new Vector3(spawnX, spawnY, 2)))
                 .addComponent(new SpriteComponent(coin))
                 .addComponent(new VelocityComponent(new  Vector2(-3f, 0f)))
                 .addComponent(new CollisionComponent(new Rectangle(0, 0, 1, 1)))
